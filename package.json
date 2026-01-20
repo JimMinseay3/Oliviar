@@ -1,0 +1,46 @@
+{
+  "name": "oliviar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JimMinseay3/Oliviar.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/JimMinseay3/Oliviar/issues"
+  },
+  "homepage": "https://github.com/JimMinseay3/Oliviar#readme",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@tauri-apps/cli": "^2.9.6",
+    "@vitejs/plugin-vue": "^6.0.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vue": "^3.5.27",
+    "vue-tsc": "^3.2.2"
+  },
+  "dependencies": {
+    "@primevue/themes": "^4.5.4",
+    "@tauri-apps/api": "^2.9.1",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "primeicons": "^7.0.0",
+    "primevue": "^4.5.4",
+    "tailwindcss": "^4.1.18"
+  }
+}

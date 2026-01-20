@@ -5,7 +5,7 @@ from . import data_fetcher as df
 from . import risk_analyzer as ra
 from . import visualizer as vs
 
-def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", preferred_year: str = None):
+def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", preferred_year: str = None, download_reports: bool = False):
     """对指定股票执行全维度的风险风控分析并生成报告"""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -28,7 +28,7 @@ def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", p
     symbol_name = name_res[0] if len(name_res) > 0 else symbol
     report_data["分析标的"] = symbol_name
 
-    # 确定文件夹
+    # 确定文件夹 (标的代码_标的简称)
     target_folder = f"{symbol}_{symbol_name}"
     final_dir = os.path.join(output_dir, target_folder)
     if not os.path.exists(final_dir):
@@ -72,21 +72,40 @@ def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", p
     deducted_profit = df.get_financial_deducted_profit(symbol)
     report_data["扣非净利润"] = deducted_profit
 
-    # 7. 财报公告 (巨潮)
-    print(f"正在获取 {symbol} 的最新财报公告...")
-    report_info = df.get_latest_financial_report(symbol, preferred_year=preferred_year)
-    if report_info:
-        report_data["最新财报标题"] = report_info['title']
-        report_data["最新财报发布日期"] = report_info['date']
+    # 7. 财报公告处理
+    target_year = preferred_year if preferred_year else datetime.now().strftime("%Y")
+    if download_reports:
+        print(f"正在下载 {symbol} 在 {target_year} 年的所有财报...")
+        all_reports = df.get_all_financial_reports(symbol, target_year)
+        
+        # 增加回退机制：如果当前年份没有搜到，自动搜上一年
+        if not all_reports and not preferred_year:
+            last_year = str(int(target_year) - 1)
+            print(f"未找到 {target_year} 年财报，尝试搜索 {last_year} 年...")
+            all_reports = df.get_all_financial_reports(symbol, last_year)
+            
+        for r in all_reports:
+            # 过滤掉文件名中的非法字符
+            clean_title = r['title'].replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
+            file_name = f"{r['date']}_{clean_title}.pdf"
+            save_path = os.path.join(final_dir, file_name)
+            if not os.path.exists(save_path):
+                df.download_report_pdf(r['url'], save_path)
     else:
-        report_data["最新财报标题"] = "N/A"
-        report_data["最新财报发布日期"] = "N/A"
+        print(f"正在获取 {symbol} 的最新财报公告信息...")
+        report_info = df.get_latest_financial_report(symbol, preferred_year=target_year)
+        if report_info:
+            report_data["最新财报标题"] = report_info['title']
+            report_data["最新财报发布日期"] = report_info['date']
+        else:
+            report_data["最新财报标题"] = "N/A"
+            report_data["最新财报发布日期"] = "N/A"
 
-    # 8. 资金流向饼图
+    # 8. 资金流向饼图 (保存到同一个文件夹)
     pie_path = vs.generate_fund_flow_pie_chart(symbol, fund_flow, output_dir=output_dir, symbol_name=symbol_name)
     report_data["资金流向饼图"] = pie_path
 
-    # 8. 保存报告 CSV
+    # 9. 保存报告 CSV
     report_df = pd.DataFrame([report_data])
     output_path = os.path.join(final_dir, f"risk_report_{symbol}_{datetime.now().strftime('%Y%m%d')}.csv")
     report_df.to_csv(output_path, index=False, encoding="utf-8-sig")

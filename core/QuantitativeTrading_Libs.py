@@ -5,6 +5,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib import (
+    get_stock_list,
+    get_symbol_by_name,
     get_stock_hist_data,
     get_realtime_quotes,
     get_individual_info,

@@ -1,5 +1,7 @@
 from .utils import setup_matplotlib, ignore_warnings, ensure_dir
 from .data_fetcher import (
+    get_stock_list,
+    get_symbol_by_name,
     get_stock_hist_data, 
     get_realtime_quotes, 
     get_individual_info, 

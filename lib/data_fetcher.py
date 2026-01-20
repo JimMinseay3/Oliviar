@@ -4,6 +4,45 @@ from datetime import datetime, timedelta
 import requests
 import re
 
+import os
+
+def get_stock_list(cache_file: str = "data/stock_list_cache.csv"):
+    """获取所有 A 股列表，支持本地缓存"""
+    # 确保 data 目录存在
+    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+    
+    # 检查缓存是否存在且是今天生成的
+    if os.path.exists(cache_file):
+        file_time = datetime.fromtimestamp(os.path.getmtime(cache_file)).strftime("%Y%m%d")
+        current_time = datetime.now().strftime("%Y%m%d")
+        if file_time == current_time:
+            try:
+                return pd.read_csv(cache_file, dtype={'代码': str})
+            except Exception:
+                pass
+    
+    # 如果没有缓存或已过期，重新拉取
+    try:
+        print("正在从 API 更新 A 股列表缓存...")
+        df = ak.stock_zh_a_spot_em()
+        df.to_csv(cache_file, index=False, encoding="utf-8-sig")
+        return df
+    except Exception as e:
+        print(f"更新 A 股列表失败: {e}")
+        if os.path.exists(cache_file):
+            return pd.read_csv(cache_file, dtype={'代码': str})
+        return pd.DataFrame()
+
+def get_symbol_by_name(name: str):
+    """通过名称匹配股票代码"""
+    df = get_stock_list()
+    if df.empty:
+        return None
+    match = df[df['名称'].str.contains(name, na=False)]
+    if not match.empty:
+        return match.iloc[0]['代码']
+    return None
+
 def get_stock_hist_data(symbol: str, days: int = 150):
     """获取股票历史日频行情数据"""
     end_date = datetime.now().strftime("%Y%m%d")
@@ -65,21 +104,33 @@ def get_all_financial_reports(symbol: str, year: str):
         start_date = f"{year}0101"
         end_date = f"{year}1231"
         
-        all_reports = []
-        keywords = ["第一季度报告", "半年度报告", "第三季度报告", "年度报告"]
+        all_reports_dict = {} # 使用字典去重，key 为公告 ID
+        # 扩展关键词，涵盖不同公司的命名习惯
+        keywords = [
+            "第一季度报告", "一季度报告", "一季报",
+            "第三季度报告", "三季度报告", "三季报",
+            "半年度报告", "半年报",
+            "年度报告", "年报"
+        ]
+        
+        # 排除包含这些词的非核心公告
+        exclude_kws = ["摘要", "提示性", "业绩说明会", "说明会", "记录表", "英文版", "决议公告", "财务报表", "审计报告", "受托管理事务报告"]
         
         for kw in keywords:
             try:
                 df = ak.stock_zh_a_disclosure_report_cninfo(symbol=symbol, market="沪深京", keyword=kw, start_date=start_date, end_date=end_date)
                 if df is not None and not df.empty and '公告标题' in df.columns:
-                    # 过滤摘要
-                    reports = df[~df['公告标题'].str.contains('摘要', na=False)]
-                    for _, row in reports.iterrows():
+                    for _, row in df.iterrows():
                         title = row['公告标题'].replace('<em>', '').replace('</em>', '')
+                        
+                        # 过滤非核心公告
+                        if any(ex in title for ex in exclude_kws):
+                            continue
+                            
                         date = row['公告时间']
                         url = row['公告链接']
                         
-                        # 尝试从链接提取 ID，支持多种格式
+                        # 提取公告 ID 用于去重
                         announcement_id = ""
                         if 'announcementId=' in url:
                             match = re.search(r'announcementId=([^&]+)', url)
@@ -87,13 +138,17 @@ def get_all_financial_reports(symbol: str, year: str):
                         elif 'detail/' in url:
                             match = re.search(r'detail/([^/?]+)', url)
                             if match: announcement_id = match.group(1)
+                        
+                        if not announcement_id:
+                            continue # 无法获取 ID 则跳过，确保下载链接有效
                             
-                        download_url = f"https://static.cninfo.com.cn/finalpage/{date}/{announcement_id}.PDF" if announcement_id else url
-                        all_reports.append({"title": title, "date": date, "url": download_url})
-            except Exception as e_kw:
-                print(f"获取关键字 {kw} 失败: {e_kw}")
+                        if announcement_id not in all_reports_dict:
+                            download_url = f"https://static.cninfo.com.cn/finalpage/{date}/{announcement_id}.PDF"
+                            all_reports_dict[announcement_id] = {"title": title, "date": date, "url": download_url}
+            except Exception:
                 continue
         
+        all_reports = list(all_reports_dict.values())
         # 按时间排序
         all_reports.sort(key=lambda x: x['date'])
         return all_reports
