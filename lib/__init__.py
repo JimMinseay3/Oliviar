@@ -7,6 +7,7 @@ from .data_fetcher import (
     get_individual_info, 
     get_fund_flow, 
     get_financial_deducted_profit,
+    get_comprehensive_financial_indicators,
     get_latest_financial_report,
     get_all_financial_reports,
     download_report_pdf,
@@ -17,7 +18,6 @@ from .risk_analyzer import (
     analyze_liquidity_depth,
     calculate_sector_correlation
 )
-from .visualizer import generate_fund_flow_pie_chart
 from .orchestrator import perform_comprehensive_risk_analysis
 
 # 初始化配置

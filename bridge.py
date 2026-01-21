@@ -13,7 +13,14 @@ def main():
         return
 
     symbol = sys.argv[1]
-    download = len(sys.argv) > 2 and sys.argv[2] == "--download"
+    download = "--download" in sys.argv
+    output_dir = "data"
+    
+    # 查找 --output-dir 参数
+    for i, arg in enumerate(sys.argv):
+        if arg == "--output-dir" and i + 1 < len(sys.argv):
+            output_dir = sys.argv[i + 1]
+            break
     
     try:
         # 运行分析
@@ -23,18 +30,13 @@ def main():
         f = StringIO()
         with contextlib.redirect_stdout(f):
             # 根据参数决定是否下载财报
-            result = perform_comprehensive_risk_analysis(symbol, download_reports=download)
+            result = perform_comprehensive_risk_analysis(symbol, output_dir=output_dir, download_reports=download)
         
         # 如果 orchestrator 返回了 report_data，我们就打印它
         if result:
-            # 清理 result 中的非字符串/数字类型（如果有）
-            serializable_result = {}
-            for k, v in result.items():
-                if isinstance(v, (str, int, float, bool, type(None))):
-                    serializable_result[k] = v
-                else:
-                    serializable_result[k] = str(v)
-            print(json.dumps(serializable_result, ensure_ascii=False))
+            # 使用 json.dumps 直接处理，如果需要自定义序列化可以在这里添加 default 处理
+            # orchestrator 返回的应该是标准 python 类型 (dict, list, str, etc.)
+            print(json.dumps(result, ensure_ascii=False))
         else:
             # 如果没有返回值，尝试从结果文件中读取（如果生成了）
             print(json.dumps({"error": "Analysis failed to return data", "logs": f.getvalue()}, ensure_ascii=False))
