@@ -51,62 +51,9 @@ def safe_ak_call(func, *args, **kwargs):
                 raise e
     return None
 
-def fetch_em_spot_em_manual():
-    """手动发送 HTTP 请求获取东财全量股票列表"""
-    url = "https://push2.eastmoney.com/api/qt/clist/get"
-    params = {
-        "pn": "1",
-        "pz": "10000", # 一次取 10000 条，基本覆盖全量 A 股
-        "po": "1",
-        "np": "1",
-        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-        "fltt": "2",
-        "invt": "2",
-        "fid": "f3",
-        "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
-        "fields": "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
-    }
-    
-    headers = DEFAULT_HEADERS.copy()
-    headers["Host"] = "push2.eastmoney.com"
-    
-    try:
-        session = get_session()
-        session.trust_env = False
-        response = session.get(url, params=params, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data and data.get("data") and data["data"].get("diff"):
-                diff = data["data"]["diff"]
-                # 转换字段名以匹配 akshare 的 stock_zh_a_spot_em
-                # f12: 代码, f14: 名称, f2: 最新价, f3: 涨跌幅, f4: 涨跌额, f5: 成交量, f6: 成交额, f7: 振幅, f15: 最高, f16: 最低, f17: 今开, f18: 昨收, f8: 换手率, f9: 市盈率, f23: 市净率
-                df_data = []
-                for item in diff:
-                    df_data.append({
-                        '代码': item.get('f12'),
-                        '名称': item.get('f14'),
-                        '最新价': item.get('f2'),
-                        '涨跌幅': item.get('f3'),
-                        '涨跌额': item.get('f4'),
-                        '成交量': item.get('f5'),
-                        '成交额': item.get('f6'),
-                        '振幅': item.get('f7'),
-                        '最高': item.get('f15'),
-                        '最低': item.get('f16'),
-                        '今开': item.get('f17'),
-                        '昨收': item.get('f18'),
-                        '换手率': item.get('f8'),
-                        '市盈率-动态': item.get('f9'),
-                        '市净率': item.get('f23')
-                    })
-                return pd.DataFrame(df_data)
-    except Exception as e:
-        print(f"手动获取东财全量列表失败: {e}")
-    return None
 
 def get_stock_list(cache_file: str = "data/stock_list_cache.csv"):
-    """获取所有 A 股列表，支持 4 级降级机制"""
+    """获取所有 A 股列表，支持降级机制"""
     # 确保 data 目录存在
     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     
@@ -136,14 +83,9 @@ def get_stock_list(cache_file: str = "data/stock_list_cache.csv"):
         except Exception as e:
             print(f"从新浪获取列表失败: {e}")
 
-    # --- Level 3: East Money (Manual) ---
+    # --- Level 3: AKShare (Basic Info) ---
     if df is None or df.empty:
-        print("新浪列表获取失败，尝试手动从东方财富获取...")
-        df = fetch_em_spot_em_manual()
-        
-    # --- Level 4: AKShare (Basic Info) ---
-    if df is None or df.empty:
-        print("东方财富手动获取失败，尝试从 AKShare 基础信息接口获取...")
+        print("新浪列表获取失败，尝试从 AKShare 基础信息接口获取...")
         try:
             df = ak.stock_info_a_code_name()
         except Exception as e:
@@ -234,63 +176,9 @@ def fetch_ths_hist_manual(symbol: str, start_date: str, end_date: str):
         print(f"手动获取同花顺数据失败: {e}")
     return None
 
-def fetch_em_hist_manual(symbol: str, start_date: str, end_date: str):
-    """手动发送 HTTP 请求获取东财历史数据，绕过 akshare 内部可能的 header 限制"""
-    # 模拟东财的 secid 逻辑
-    if symbol.startswith('6') or symbol.startswith('9'):
-        secid = f"1.{symbol}"
-    else:
-        secid = f"0.{symbol}"
-        
-    url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
-    params = {
-        "fields1": "f1,f2,f3,f4,f5,f6",
-        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116",
-        "ut": "7eea3edcaed734bea9cbfc24409ed989",
-        "klt": "101", # 日K
-        "fqt": "1",   # 前复权
-        "secid": secid,
-        "beg": start_date,
-        "end": end_date
-    }
-    
-    headers = DEFAULT_HEADERS.copy()
-    headers["Host"] = "push2his.eastmoney.com"
-    
-    try:
-        session = get_session()
-        # 强制禁用代理
-        session.trust_env = False
-        response = session.get(url, params=params, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data and data.get("data") and data["data"].get("klines"):
-                klines = data["data"]["klines"]
-                df_data = []
-                for line in klines:
-                    # f51(日期), f52(开盘), f53(收盘), f54(最高), f55(最低), f56(成交量), f57(成交额), f58(振幅), f59(涨跌幅), f60(涨跌额), f61(换手率)
-                    parts = line.split(',')
-                    df_data.append({
-                        '日期': parts[0],
-                        '开盘': float(parts[1]),
-                        '收盘': float(parts[2]),
-                        '最高': float(parts[3]),
-                        '最低': float(parts[4]),
-                        '成交量': float(parts[5]),
-                        '成交额': float(parts[6]),
-                        '振幅': float(parts[7]),
-                        '涨跌幅': float(parts[8]),
-                        '涨跌额': float(parts[9]),
-                        '换手率': float(parts[10])
-                    })
-                return pd.DataFrame(df_data)
-    except Exception as e:
-        print(f"手动获取东财数据失败: {e}")
-    return None
 
 def get_stock_hist_data(symbol: str, days: int = 150):
-    """获取股票历史日频行情数据，支持 4 级降级机制"""
+    """获取股票历史日频行情数据，支持降级机制"""
     end_date = datetime.now().strftime("%Y%m%d")
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
     
@@ -324,14 +212,8 @@ def get_stock_hist_data(symbol: str, days: int = 150):
     except Exception as e:
         print(f"从新浪获取历史数据失败: {e}")
 
-    # --- Level 3: East Money (Manual) ---
-    print(f"新浪财经数据获取失败，尝试手动从东方财富获取 {symbol}...")
-    res = fetch_em_hist_manual(symbol, start_date, end_date)
-    if res is not None and not res.empty:
-        return res
-        
-    # --- Level 4: THS (Manual) ---
-    print(f"东方财富手动获取失败，尝试手动从同花顺获取 {symbol}...")
+    # --- Level 3: THS (Manual) ---
+    print(f"新浪财经数据获取失败，尝试手动从同花顺获取 {symbol}...")
     res = fetch_ths_hist_manual(symbol, start_date, end_date)
     if res is not None and not res.empty:
         return res
@@ -415,59 +297,9 @@ def fetch_ths_spot_manual(symbol: str):
     return None
 
 def get_single_stock_spot(symbol: str):
-    """获取单只股票的实时行情数据，支持 4 级降级机制"""
+    """获取单只股票的实时行情数据，支持降级机制"""
     
-    # --- Level 1 & 3: East Money (Manual/Extreme) ---
-    try:
-        # 确定市场前缀
-        if symbol.startswith('6') or symbol.startswith('9'):
-            secid = f"1.{symbol}"
-        else:
-            secid = f"0.{symbol}"
-            
-        url = "https://push2.eastmoney.com/api/qt/stock/get"
-        params = {
-            "secid": secid,
-            "fields": "f43,f44,f45,f46,f60,f47,f48,f49,f50,f51,f52,f57,f58,f107,f108,f162,f163,f164,f167,f116,f117,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f19,f20,f31,f32,f33,f34,f35,f36,f37,f38,f39,f40,f127,f128"
-        }
-        
-        headers = DEFAULT_HEADERS.copy()
-        headers["Host"] = "push2.eastmoney.com"
-        
-        session = get_session()
-        session.trust_env = False
-        resp = session.get(url, params=params, timeout=10, headers=headers)
-        data = resp.json()
-        
-        if data and data.get("data"):
-            d = data["data"]
-            return {
-                "代码": symbol,
-                "名称": d.get("f58", "N/A"),
-                "现价": d.get("f43", 0) / 100.0 if d.get("f43") != "-" else "N/A",
-                "涨幅": f"{d.get('f3', 0) / 100.0:.2f}%" if d.get("f3") != "-" else "N/A",
-                "涨跌": d.get("f4", 0) / 100.0 if d.get("f4") != "-" else "N/A",
-                "成交额": f"{d.get('f6', 0) / 1e8:.2f}亿" if d.get("f6") != "-" else "N/A",
-                "换手率%": f"{d.get('f8', 0) / 100.0:.2f}%" if d.get("f8") != "-" else "N/A",
-                "振幅": f"{d.get('f7', 0) / 100.0:.2f}%" if d.get("f7") != "-" else "N/A",
-                "最高": d.get("f44", 0) / 100.0 if d.get("f44") != "-" else "N/A",
-                "最低": d.get("f45", 0) / 100.0 if d.get("f45") != "-" else "N/A",
-                "开盘": d.get("f46", 0) / 100.0 if d.get("f46") != "-" else "N/A",
-                "昨收": d.get("f60", 0) / 100.0 if d.get("f60") != "-" else "N/A",
-                "量比": d.get("f10", 0) / 100.0 if d.get("f10") != "-" else "N/A",
-                "市盈率(TTM)": d.get("f162", 0) / 100.0 if d.get("f162") != "-" else "N/A",
-                "市盈(静)": d.get("f163", 0) / 100.0 if d.get("f163") != "-" else "N/A",
-                "市盈(动)": d.get("f164", 0) / 100.0 if d.get("f164") != "-" else "N/A",
-                "市净率(MRQ)": d.get("f167", 0) / 100.0 if d.get("f167") != "-" else "N/A",
-                "总市值": f"{d.get('f116', 0) / 1e8:.2f}亿" if d.get("f116") != "-" else "N/A",
-                "流通市值": f"{d.get('f117', 0) / 1e8:.2f}亿" if d.get("f117") != "-" else "N/A",
-                "股息率": f"{d.get('f108', 0) / 100.0:.2f}%" if d.get("f108") != "-" else "N/A",
-                "涨速": f"{d.get('f9', 0) / 100.0:.2f}%" if d.get("f9") != "-" else "N/A",
-            }
-    except Exception as e:
-        print(f"手动获取东财实时数据失败: {e}")
-
-    # --- Level 2: Sina Finance (via AKShare) ---
+    # --- Level 1: Sina Finance (via AKShare) ---
     try:
         df_sina = ak.stock_zh_a_spot()
         if df_sina is not None and not df_sina.empty:
@@ -491,7 +323,7 @@ def get_single_stock_spot(symbol: str):
     except Exception as e:
         print(f"从新浪获取实时数据失败: {e}")
 
-    # --- Level 4: THS (Manual) ---
+    # --- Level 2: THS (Manual) ---
     print(f"尝试手动从同花顺获取实时数据 {symbol}...")
     res = fetch_ths_spot_manual(symbol)
     if res:
