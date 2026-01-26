@@ -35,7 +35,7 @@ async fn analyze_stock(symbol: String, download: bool, output_dir: Option<String
         } else {
             venv_path.join("bin").join("python")
         };
-        let mut b_path = current_dir.join("bridge.py");
+        let mut b_path = current_dir.join("core").join("bridge.py");
         
         if !py_exe.exists() {
             // 尝试在父目录寻找 (如果在 src-tauri 目录下运行)
@@ -46,7 +46,7 @@ async fn analyze_stock(symbol: String, download: bool, output_dir: Option<String
             } else {
                 venv_path.join("bin").join("python")
             };
-            b_path = parent_dir.join("bridge.py");
+            b_path = parent_dir.join("core").join("bridge.py");
         }
         (py_exe, b_path)
     };

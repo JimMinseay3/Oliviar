@@ -51,8 +51,11 @@ def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", p
     fund_flow = df.get_fund_flow(symbol)
     
     # 获取名称
-    name_res = stock_info[stock_info['item'] == '股票简称']['value'].values
-    symbol_name = name_res[0] if len(name_res) > 0 else symbol
+    symbol_name = symbol
+    if not stock_info.empty and 'item' in stock_info.columns:
+        name_res = stock_info[stock_info['item'] == '股票简称']['value'].values
+        if len(name_res) > 0:
+            symbol_name = name_res[0]
     report_data["分析标的"] = symbol_name
 
     # 确定文件夹 (标的代码_标的简称)
@@ -86,12 +89,16 @@ def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", p
         report_data["流动性评估"] = "N/A"
     
     # 4. 板块共振分析
-    industry_res = stock_info[stock_info['item'] == '行业']['value'].values
-    df_industry = None
-    if len(industry_res) > 0:
-        try:
+    industry_name = "N/A"
+    if not stock_info.empty and 'item' in stock_info.columns:
+        industry_res = stock_info[stock_info['item'] == '行业']['value'].values
+        if len(industry_res) > 0:
             industry_name = industry_res[0]
-            report_data["所属行业"] = industry_name
+    
+    report_data["所属行业"] = industry_name
+    df_industry = None
+    if industry_name != "N/A":
+        try:
             df_industry = df.get_industry_hist(industry_name)
             if df_industry is not None and not df_industry.empty:
                 corr = ra.calculate_sector_correlation(df_hist, df_industry)
@@ -101,7 +108,6 @@ def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", p
         except Exception as e:
             print(f"板块共振分析失败: {e}")
             report_data["行业相关性"] = "N/A"
-            report_data["所属行业"] = industry_res[0] if len(industry_res) > 0 else "N/A"
 
     # 5. 资金流向分析
     if not fund_flow.empty:
@@ -146,7 +152,13 @@ def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", p
                 file_name = f"{r['date']}_{clean_title}.pdf"
                 save_path = os.path.join(final_dir, file_name)
                 if not os.path.exists(save_path):
-                    df.download_report_pdf(r['url'], save_path)
+                    success = df.download_report_pdf(r['url'], save_path)
+                    if success:
+                        print(f"成功下载: {file_name}")
+                    else:
+                        print(f"下载失败: {file_name}, URL: {r['url']}")
+                else:
+                    print(f"文件已存在，跳过下载: {file_name}")
         else:
             print(f"正在获取 {symbol} 的最新财报公告信息...")
             report_info = df.get_latest_financial_report(symbol, preferred_year=target_year)

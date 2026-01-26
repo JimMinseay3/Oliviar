@@ -1,0 +1,431 @@
+<script setup lang="ts">
+// @ts-nocheck
+import { ref, computed, onMounted, watch } from "vue";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
+import Card from 'primevue/card';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import Tag from 'primevue/tag';
+import ProgressSpinner from 'primevue/progressspinner';
+import Paginator from 'primevue/paginator';
+import Toast from 'primevue/toast';
+import Tabs from 'primevue/tabs';
+import TabList from 'primevue/tablist';
+import Tab from 'primevue/tab';
+import TabPanels from 'primevue/tabpanels';
+import TabPanel from 'primevue/tabpanel';
+import Divider from 'primevue/divider';
+import { useToast } from "primevue/usetoast";
+
+const stockSymbol = ref("");
+const loading = ref(false); // 用于个股分析的加载
+const downloadLoading = ref(false); // 用于下载财报的加载
+const reportsLoading = ref(false); // 用于财报列表刷新的加载
+const downloadPath = ref(localStorage.getItem('downloadPath') || '');
+const analysisResult = ref<any>(null);
+
+// 监听下载路径变化并保存
+watch(downloadPath, (newPath) => {
+  localStorage.setItem('downloadPath', newPath);
+});
+
+async function selectDownloadPath() {
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: '选择下载保存路径'
+    });
+    if (selected) {
+      downloadPath.value = selected as string;
+    }
+  } catch (error) {
+    toast.add({ severity: 'error', summary: '错误', detail: '选择路径失败', life: 3000 });
+  }
+}
+
+const emptyResult = {
+  "分析标的": "等待分析",
+  "证券代码": "000000",
+  "所属行业": "N/A",
+  "分析时间": "尚未执行",
+  "涨幅": "N/A",
+  "现价": "N/A",
+  "涨跌": "N/A",
+  "主力净额": "N/A",
+  "主力净量": "N/A",
+  "涨速": "N/A",
+  "总市值": "N/A",
+  "流通市值": "N/A",
+  "净利润": "N/A",
+  "成交额": "N/A",
+  "换手率%": "N/A",
+  "振幅": "N/A",
+  "市盈(静)": "N/A",
+  "市盈(动)": "N/A",
+  "市盈率(TTM)": "N/A",
+  "市净率(MRQ)": "N/A",
+  "最高": "N/A",
+  "最低": "N/A",
+  "开盘": "N/A",
+  "昨收": "N/A",
+  "外盘": "N/A",
+  "内盘": "N/A",
+  "5日涨幅": "N/A",
+  "10日涨幅": "N/A",
+  "20日涨幅": "N/A",
+  "总股本": "N/A",
+  "流通股本": "N/A",
+  "净利润同比": "N/A",
+  "净资产收益率(ROE)": "N/A",
+  "资产负债率": "N/A",
+  "基本每股收益": "N/A",
+  "每股净资产": "N/A",
+  "股息率": "N/A",
+  "商誉": "N/A",
+  "营业总收入": "N/A",
+  "营业利润": "N/A",
+  "归母净利润": "N/A",
+  "扣非净利润": "N/A",
+  "营业总收入同比": "N/A",
+  "营业利润同比": "N/A",
+  "归母净利润同比": "N/A",
+  "扣非净利润同比": "N/A",
+  "销售毛利率": "N/A",
+  "销售净利率": "N/A",
+  "每股经营现金流": "N/A",
+  "每股未分配利润": "N/A",
+  "每股公积金": "N/A",
+  "HV20": "N/A",
+  "HV60": "N/A",
+  "行业相关性": "N/A",
+  "流动性评估": "N/A",
+  "买卖盘深度": "N/A",
+  "今日主力净流入(万元)": "0.00",
+  "近一周主力净流入(万元)": "0.00",
+  "资金流向饼图": null,
+  "historical_data": Array.from({ length: 5 }, () => ({}))
+};
+
+const displayResult = computed(() => analysisResult.value || emptyResult);
+
+// 定义每个选项卡显示的 Excel 表头
+const tabColumns = {
+  "0": ["日期", "现价", "涨幅", "涨跌", "涨速", "换手率%", "成交额", "振幅", "最高", "最低", "开盘", "昨收"],
+  "1": ["日期", "营业总收入", "营业利润", "归母净利润", "扣非净利润", "净资产收益率(ROE)", "销售毛利率", "销售净利率", "每股经营现金流", "每股未分配利润", "每股公积金", "股息率", "资产负债率", "商誉"],
+  "2": ["日期", "市盈率(TTM)", "市盈(静)", "市盈(动)", "市净率(MRQ)", "营业总收入同比", "营业利润同比", "归母净利润同比", "扣非净利润同比", "总市值", "流通市值", "总股本", "流通股本", "基本每股收益", "每股净资产"],
+  "3": ["日期", "HV20", "HV60", "行业相关性", "流动性评估", "买卖盘深度", "5日涨幅", "10日涨幅", "20日涨幅", "60日涨跌幅"],
+  "4": ["日期", "流入小单", "流入中单", "流入大单", "流入特大单", "流出小单", "流出中单", "流出大单", "流出特大单"]
+};
+
+function onCellEditComplete(event: any) {
+    let { data, newValue, field } = event;
+    data[field] = newValue;
+}
+
+const reports = ref<any[]>([]);
+const reportsFirst = ref(0);
+const reportsRows = ref(10);
+const searchQuery = ref("");
+
+// 移除局部排序用的 paginatedReports，直接使用 DataTable 内置分页实现全局排序
+const filteredReports = computed(() => {
+  if (!searchQuery.value) return reports.value;
+  const query = searchQuery.value.toLowerCase();
+  return reports.value.filter(report => 
+    report.symbol.toLowerCase().includes(query) ||
+    report.name.toLowerCase().includes(query) ||
+    report.title.toLowerCase().includes(query)
+  );
+});
+
+const currentView = ref(localStorage.getItem('current_view') || 'home');
+const toast = useToast();
+const exportLoading = ref(false);
+
+async function downloadAllExcel() {
+  if (!analysisResult.value || !downloadPath.value) {
+    toast.add({ severity: 'warn', summary: '提示', detail: '请先完成分析并设置下载路径', life: 3000 });
+    return;
+  }
+
+  exportLoading.value = true;
+  try {
+    const symbol = analysisResult.value["证券代码"];
+    const name = analysisResult.value["分析标的"];
+    const tabNames = {
+      "0": "行情数据",
+      "1": "深度财务",
+      "2": "成长与估值",
+      "3": "风险与量化",
+      "4": "资金流向分析"
+    };
+
+    const promises = Object.entries(tabColumns).map(async ([key, columns]) => {
+      const tabName = tabNames[key as keyof typeof tabNames];
+      const filename = `${symbol}_${name}_${tabName}.xlsx`;
+      // 将文件保存到标的对应的子文件夹中
+      const subFolder = `${symbol}_${name}`;
+      const fullPath = `${downloadPath.value}\\${subFolder}`;
+      
+      return invoke("export_excel", {
+        path: fullPath,
+        filename: filename,
+        columns: columns,
+        data: analysisResult.value.historical_data
+      });
+    });
+
+    await Promise.all(promises);
+    toast.add({ severity: 'success', summary: '成功', detail: '五份 Excel 文件已导出至指定路径', life: 3000 });
+  } catch (error) {
+    console.error("Export failed:", error);
+    toast.add({ severity: 'error', summary: '错误', detail: '导出 Excel 失败: ' + error, life: 5000 });
+  } finally {
+    exportLoading.value = false;
+  }
+}
+
+// 切换视图
+async function setView(view: string) {
+  currentView.value = view;
+  localStorage.setItem('current_view', view);
+  if (view === 'reports') {
+    await fetchReports();
+  }
+}
+
+// 获取财报列表
+async function fetchReports() {
+  reportsLoading.value = true;
+  try {
+    const result = await invoke("list_reports", { 
+      outputDir: downloadPath.value || null 
+    }) as any[];
+    // 按日期降序排列，确保最新的在前面
+    reports.value = result.sort((a, b) => b.date.localeCompare(a.date));
+    // 刷新时重置到第一页
+    reportsFirst.value = 0;
+  } catch (error) {
+    toast.add({ severity: 'error', summary: '错误', detail: '无法获取财报列表', life: 3000 });
+  } finally {
+    reportsLoading.value = false;
+  }
+}
+
+function onPage(event: any) {
+  reportsFirst.value = event.first;
+  reportsRows.value = event.rows;
+}
+
+// 打开财报
+async function openReport(path: string) {
+  try {
+    await invoke("open_file", { path });
+  } catch (error) {
+    toast.add({ severity: 'error', summary: '错误', detail: '无法打开文件', life: 3000 });
+  }
+}
+
+// 打开文件夹
+async function openFolder(path: string) {
+  try {
+    await invoke("show_in_folder", { path });
+  } catch (error) {
+    toast.add({ severity: 'error', summary: '错误', detail: '无法打开文件夹', life: 3000 });
+  }
+}
+
+async function startAnalysis(download = false) {
+  if (!stockSymbol.value) {
+    toast.add({ severity: 'warn', summary: '提示', detail: '请输入股票代码', life: 3000 });
+    return;
+  }
+  
+  if (download) {
+    downloadLoading.value = true;
+  } else {
+    loading.value = true;
+    setView('analysis'); // 开始分析后跳转到"标的数据"视图
+  }
+
+  try {
+    const result = await invoke("analyze_stock", { 
+      symbol: stockSymbol.value, 
+      download,
+      outputDir: downloadPath.value || null
+    }) as any;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    analysisResult.value = result;
+    
+    if (download) {
+      await fetchReports(); // 下载完成后刷新列表
+    }
+    
+    toast.add({ 
+      severity: 'success', 
+      summary: '成功', 
+      detail: download ? '分析完成并已下载财报' : '分析完成', 
+      life: 3000 
+    });
+  } catch (error) {
+    console.error(error);
+    toast.add({ severity: 'error', summary: '错误', detail: `分析失败: ${error}`, life: 5000 });
+  } finally {
+    loading.value = false;
+    downloadLoading.value = false;
+  }
+}
+
+if (currentView.value === 'reports') {
+  fetchReports();
+}
+</script>
+
+<template>
+  <div class="layout-wrapper">
+    <Toast />
+    <aside class="sidebar">
+      <div class="logo">
+        <i class="pi pi-chart-line" style="font-size: 1.25rem; color: var(--p-primary-color)"></i>
+        <span>Oliviar</span>
+      </div>
+      <nav class="nav-menu">
+        <div class="nav-menu-top">
+          <div class="nav-item" :class="{ active: currentView === 'home' }" @click="setView('home')">
+            <i class="pi pi-home"></i>
+            <span>主页</span>
+          </div>
+          <div class="nav-item" :class="{ active: currentView === 'analysis' }" @click="setView('analysis')">
+            <i class="pi pi-database"></i>
+            <span>标的数据</span>
+          </div>
+          <div class="nav-item" :class="{ active: currentView === 'reports' }" @click="setView('reports')">
+            <i class="pi pi-file-pdf"></i>
+            <span>财报管理</span>
+          </div>
+        </div>
+        <div class="nav-menu-bottom">
+          <div class="nav-item" :class="{ active: currentView === 'settings' }" @click="setView('settings')">
+            <i class="pi pi-cog"></i>
+            <span>设置</span>
+          </div>
+        </div>
+      </nav>
+    </aside>
+    
+    <main class="main-content">
+      <header class="top-bar">
+        <div class="search-box">
+          <div class="search-input-field">
+            <i class="pi pi-search" />
+            <InputText v-model="stockSymbol" placeholder="输入股票代码 (如 600036)" @keyup.enter="startAnalysis(false)" />
+          </div>
+          <div class="button-group">
+            <Button label="开始分析" icon="pi pi-play" :loading="loading" @click="startAnalysis(false)" />
+            <Button label="下载财报" icon="pi pi-download" severity="secondary" :loading="downloadLoading" @click="startAnalysis(true)" />
+          </div>
+        </div>
+      </header>
+      
+      <section class="content-area">
+        <div v-if="currentView === 'home'" class="view-container welcome-view">
+          <div class="welcome-content">
+            <div class="welcome-header">
+              <h1>Oliviar</h1>
+              <p>智能、专业、高效的量化风控与深度财务分析平台</p>
+            </div>
+            <div class="quick-actions">
+              <Card class="action-card" @click="setView('analysis')">
+                <template #title><i class="pi pi-search"></i> 标的分析</template>
+                <template #content>输入股票代码，快速获取行情、财务、估值及资金流向的深度量化报告。</template>
+              </Card>
+              <Card class="action-card" @click="setView('reports')">
+                <template #title><i class="pi pi-file-pdf"></i> 财报管理</template>
+                <template #content>查看已下载的财报公告，支持本地预览与目录管理。</template>
+              </Card>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="currentView === 'analysis'" class="view-container">
+          <div class="analysis-container">
+            <!-- 顶部基本信息 -->
+            <div class="basic-info-section">
+              <div class="info-header-vertical">
+                <div class="stock-name">{{ displayResult["分析标的"] }}</div>
+                <div class="stock-meta-list">
+                  <div class="meta-row">
+                    <span class="meta-label">标的代码：</span>
+                    <span class="meta-value">{{ displayResult['证券代码'] }}</span>
+                  </div>
+                  <div class="meta-row">
+                    <span class="meta-label">所属行业：</span>
+                    <span class="meta-value">{{ displayResult["所属行业"] || 'N/A' }}</span>
+                  </div>
+                  <div class="meta-row">
+                    <span class="meta-label">分析时间：</span>
+                    <span class="meta-value">{{ displayResult["分析时间"] }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Divider />
+
+            <!-- 下方选项卡机制 -->
+            <Tabs value="0" class="analysis-tabs">
+              <div class="tabs-header-wrapper">
+                <TabList>
+                  <Tab value="0">行情数据</Tab>
+                  <Tab value="4">资金流向分析</Tab>
+                  <Tab value="1">深度财务</Tab>
+                  <Tab value="2">成长与估值</Tab>
+                  <Tab value="3">风险与量化</Tab>
+                </TabList>
+                <Button 
+                  icon="pi pi-download" 
+                  label="一键下载 (5份Excel)" 
+                  class="p-button-outlined p-button-sm download-all-btn" 
+                  @click="downloadAllExcel" 
+                  :loading="exportLoading" 
+                  v-if="analysisResult" 
+                />
+              </div>
+              <TabPanels>
+                <!-- 1. 行情数据 -->
+                <TabPanel value="0">
+                  <div class="excel-section">
+                    <h3 class="section-title"><i class="pi pi-table mr-2"></i> 历史行情明细 (近一月)</h3>
+                    <div v-if="loading" class="loader-container">
+                      <ProgressSpinner />
+                      <p>正在执行量化风控分析，请稍候...</p>
+                    </div>
+                    <div v-else-if="analysisResult">
+                      <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable stripedRows showGridlines>
+                        <Column v-for="col in tabColumns['0']" :key="col" :field="col" :header="col" sortable>
+                          <template #editor="{ data, field }">
+                            <InputText v-model="data[field]" autofocus class="w-full" />
+                          </template>
+                        </Column>
+                      </DataTable>
+                    </div>
+                    <div v-else class="no-data-message">
+                      <p><i>尚未查询</i></p>
+                    </div>
+                  </div>
+                </TabPanel>
+
+                <!-- 2. 资金流向分析 -->
+                <TabPanel value="4">
+                  <div class="fund-flow-container">
+                    <div class="fund-flow-table-section">
+                      <div class="excel-section">
+                        <h3 class="section-title"><

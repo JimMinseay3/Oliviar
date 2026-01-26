@@ -3,22 +3,22 @@ import os
 import time
 import random
 
-# 确保能找到 core 目录
-project_root = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(project_root, "core"))
+# 确保能找到项目根目录
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
-import QuantitativeTrading_Libs as lh
+# 直接从 core 导入分析模块
+from core.orchestrator import perform_comprehensive_risk_analysis
+from core.data_fetcher import get_symbol_by_name
 
 def process_stocks(stock_names):
     print(f"--- 启动优化版批量处理器 (缓存模式) ---")
     
-    # 第一次运行会自动创建或加载缓存
-    # lh.get_stock_list() 会被 get_symbol_by_name 内部调用
-    
     results = []
     for name in stock_names:
         print(f"\n{'='*20} 正在检索: {name} {'='*20}")
-        symbol = lh.get_symbol_by_name(name)
+        symbol = get_symbol_by_name(name)
         
         if not symbol:
             print(f"未找到股票: {name}")
@@ -27,7 +27,7 @@ def process_stocks(stock_names):
         print(f"匹配成功: {name} -> {symbol}")
         try:
             # 执行综合分析并下载 2025 年所有财报到同一个文件夹
-            lh.perform_comprehensive_risk_analysis(symbol, preferred_year="2025", download_reports=True)
+            perform_comprehensive_risk_analysis(symbol, preferred_year="2025", download_reports=True)
             print(f"[{name}] 处理完成。")
             results.append((name, symbol, "成功"))
         except Exception as e:

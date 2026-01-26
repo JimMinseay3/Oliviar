@@ -2,7 +2,20 @@ import sys
 import json
 import os
 import io
-from lib.orchestrator import perform_comprehensive_risk_analysis
+
+# 将项目根目录添加到 sys.path 以便导入 lib
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# 禁用代理，防止某些环境下网络连接问题
+os.environ['HTTP_PROXY'] = ''
+os.environ['HTTPS_PROXY'] = ''
+os.environ['http_proxy'] = ''
+os.environ['https_proxy'] = ''
+os.environ['no_proxy'] = '*'
+
+from core.orchestrator import perform_comprehensive_risk_analysis
 
 # 强制设置 stdout 为 UTF-8 编码，防止 Windows 下输出乱码
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -166,8 +167,12 @@ async function downloadAllExcel() {
     const promises = Object.entries(tabColumns).map(async ([key, columns]) => {
       const tabName = tabNames[key as keyof typeof tabNames];
       const filename = `${symbol}_${name}_${tabName}.xlsx`;
+      // 将文件保存到标的对应的子文件夹中
+      const subFolder = `${symbol}_${name}`;
+      const fullPath = `${downloadPath.value}\\${subFolder}`;
+      
       return invoke("export_excel", {
-        path: downloadPath.value,
+        path: fullPath,
         filename: filename,
         columns: columns,
         data: analysisResult.value.historical_data
@@ -253,6 +258,11 @@ async function startAnalysis(download = false) {
       download,
       outputDir: downloadPath.value || null
     }) as any;
+
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
     analysisResult.value = result;
     
     if (download) {
@@ -301,6 +311,7 @@ if (currentView.value === 'reports') {
             <i class="pi pi-file-pdf"></i>
             <span>财报管理</span>
           </div>
+          
         </div>
         <div class="nav-menu-bottom">
           <div class="nav-item" :class="{ active: currentView === 'settings' }" @click="setView('settings')">
@@ -329,7 +340,7 @@ if (currentView.value === 'reports') {
         <div v-if="currentView === 'home'" class="view-container welcome-view">
           <div class="welcome-content">
             <div class="welcome-header">
-              <h1>欢迎使用 Oliviar 投研分析系统</h1>
+              <h1>Oliviar</h1>
               <p>智能、专业、高效的量化风控与深度财务分析平台</p>
             </div>
             <div class="quick-actions">
@@ -346,11 +357,6 @@ if (currentView.value === 'reports') {
         </div>
 
         <div v-else-if="currentView === 'analysis'" class="view-container">
-          <div v-if="loading" class="loader-container">
-            <ProgressSpinner />
-            <p>正在执行量化风控分析，请稍候...</p>
-          </div>
-          
           <div class="analysis-container">
             <!-- 顶部基本信息 -->
             <div class="basic-info-section">
@@ -399,13 +405,22 @@ if (currentView.value === 'reports') {
                 <TabPanel value="0">
                   <div class="excel-section">
                     <h3 class="section-title"><i class="pi pi-table mr-2"></i> 历史行情明细 (近一月)</h3>
-                    <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable scrollHeight="600px" stripedRows showGridlines>
-                      <Column v-for="col in tabColumns['0']" :key="col" :field="col" :header="col" sortable>
-                        <template #editor="{ data, field }">
-                          <InputText v-model="data[field]" autofocus class="w-full" />
-                        </template>
-                      </Column>
-                    </DataTable>
+                    <div v-if="loading" class="loader-container">
+                      <ProgressSpinner />
+                      <p>正在执行量化风控分析，请稍候...</p>
+                    </div>
+                    <div v-else-if="analysisResult">
+                      <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable stripedRows showGridlines>
+                        <Column v-for="col in tabColumns['0']" :key="col" :field="col" :header="col" sortable>
+                          <template #editor="{ data, field }">
+                            <InputText v-model="data[field]" autofocus class="w-full" />
+                          </template>
+                        </Column>
+                      </DataTable>
+                    </div>
+                    <div v-else class="no-data-message">
+                      <p><i>尚未查询</i></p>
+                    </div>
                   </div>
                 </TabPanel>
 
@@ -415,13 +430,22 @@ if (currentView.value === 'reports') {
                     <div class="fund-flow-table-section">
                       <div class="excel-section">
                         <h3 class="section-title"><i class="pi pi-table mr-2"></i> 历史资金流向明细 (近一月)</h3>
-                        <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable scrollHeight="600px" stripedRows showGridlines>
-                          <Column v-for="col in tabColumns['4']" :key="col" :field="col" :header="col" sortable>
-                            <template #editor="{ data, field }">
-                              <InputText v-model="data[field]" autofocus class="w-full" />
-                            </template>
-                          </Column>
-                        </DataTable>
+                        <div v-if="loading" class="loader-container">
+                          <ProgressSpinner />
+                          <p>正在执行量化风控分析，请稍候...</p>
+                        </div>
+                        <div v-else-if="analysisResult">
+                          <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable stripedRows showGridlines>
+                            <Column v-for="col in tabColumns['4']" :key="col" :field="col" :header="col" sortable>
+                              <template #editor="{ data, field }">
+                                <InputText v-model="data[field]" autofocus class="w-full" />
+                              </template>
+                            </Column>
+                          </DataTable>
+                        </div>
+                        <div v-else class="no-data-message">
+                          <p><i>尚未查询</i></p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -432,13 +456,22 @@ if (currentView.value === 'reports') {
                   <!-- 历史数据表格 (Excel 风格) -->
                   <div class="excel-section">
                     <h3 class="section-title"><i class="pi pi-table mr-2"></i> 历史深度财务明细 (近一月)</h3>
-                    <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable scrollHeight="600px" stripedRows showGridlines>
-                      <Column v-for="col in tabColumns['1']" :key="col" :field="col" :header="col" sortable>
-                        <template #editor="{ data, field }">
-                          <InputText v-model="data[field]" autofocus class="w-full" />
-                        </template>
-                      </Column>
-                    </DataTable>
+                    <div v-if="loading" class="loader-container">
+                      <ProgressSpinner />
+                      <p>正在执行量化风控分析，请稍候...</p>
+                    </div>
+                    <div v-else-if="analysisResult">
+                      <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable stripedRows showGridlines>
+                        <Column v-for="col in tabColumns['1']" :key="col" :field="col" :header="col" sortable>
+                          <template #editor="{ data, field }">
+                            <InputText v-model="data[field]" autofocus class="w-full" />
+                          </template>
+                        </Column>
+                      </DataTable>
+                    </div>
+                    <div v-else class="no-data-message">
+                      <p><i>尚未查询</i></p>
+                    </div>
                   </div>
                 </TabPanel>
 
@@ -447,13 +480,22 @@ if (currentView.value === 'reports') {
                   <!-- 历史数据表格 (Excel 风格) -->
                   <div class="excel-section">
                     <h3 class="section-title"><i class="pi pi-table mr-2"></i> 历史成长与估值明细 (近一月)</h3>
-                    <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable scrollHeight="600px" stripedRows showGridlines>
-                      <Column v-for="col in tabColumns['2']" :key="col" :field="col" :header="col" sortable>
-                        <template #editor="{ data, field }">
-                          <InputText v-model="data[field]" autofocus class="w-full" />
-                        </template>
-                      </Column>
-                    </DataTable>
+                    <div v-if="loading" class="loader-container">
+                      <ProgressSpinner />
+                      <p>正在执行量化风控分析，请稍候...</p>
+                    </div>
+                    <div v-else-if="analysisResult">
+                      <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable stripedRows showGridlines>
+                        <Column v-for="col in tabColumns['2']" :key="col" :field="col" :header="col" sortable>
+                          <template #editor="{ data, field }">
+                            <InputText v-model="data[field]" autofocus class="w-full" />
+                          </template>
+                        </Column>
+                      </DataTable>
+                    </div>
+                    <div v-else class="no-data-message">
+                      <p><i>尚未查询</i></p>
+                    </div>
                   </div>
                 </TabPanel>
 
@@ -462,13 +504,22 @@ if (currentView.value === 'reports') {
                   <!-- 历史数据表格 (Excel 风格) -->
                   <div class="excel-section">
                     <h3 class="section-title"><i class="pi pi-table mr-2"></i> 历史风险与量化明细 (近一月)</h3>
-                    <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable scrollHeight="600px" stripedRows showGridlines>
-                      <Column v-for="col in tabColumns['3']" :key="col" :field="col" :header="col" sortable>
-                        <template #editor="{ data, field }">
-                          <InputText v-model="data[field]" autofocus class="w-full" />
-                        </template>
-                      </Column>
-                    </DataTable>
+                    <div v-if="loading" class="loader-container">
+                      <ProgressSpinner />
+                      <p>正在执行量化风控分析，请稍候...</p>
+                    </div>
+                    <div v-else-if="analysisResult">
+                      <DataTable :value="displayResult.historical_data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="p-datatable-sm excel-table" scrollable stripedRows showGridlines>
+                        <Column v-for="col in tabColumns['3']" :key="col" :field="col" :header="col" sortable>
+                          <template #editor="{ data, field }">
+                            <InputText v-model="data[field]" autofocus class="w-full" />
+                          </template>
+                        </Column>
+                      </DataTable>
+                    </div>
+                    <div v-else class="no-data-message">
+                      <p><i>尚未查询</i></p>
+                    </div>
                   </div>
                 </TabPanel>
               </TabPanels>
@@ -538,7 +589,7 @@ if (currentView.value === 'reports') {
 
 <style>
 :root {
-  --sidebar-width: 260px;
+  --sidebar-width: 200px;
   --top-bar-height: 70px;
 }
 
@@ -566,15 +617,15 @@ body {
   height: var(--top-bar-height);
   display: flex;
   align-items: center;
-  padding: 0 2rem;
-  gap: 1rem;
+  padding: 0 1.5rem;
+  gap: 0.75rem;
   font-weight: bold;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
 }
 
 .nav-menu {
   flex: 1;
-  padding: 1rem;
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -622,6 +673,10 @@ body {
   padding: 1.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   border: 1px solid #eee;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .section-title {
@@ -638,10 +693,14 @@ body {
   flex-direction: column;
   gap: 1.5rem;
   width: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .fund-flow-table-section, .fund-flow-chart-section {
   width: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .pie-chart-wrapper {
@@ -761,12 +820,13 @@ body {
 .nav-item {
   display: flex;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.75rem;
   border-radius: 8px;
   cursor: pointer;
-  gap: 1rem;
+  gap: 0.75rem;
   color: #666;
   transition: all 0.2s;
+  font-size: 0.9rem;
 }
 
 .nav-item:hover {
@@ -838,6 +898,8 @@ body {
   flex-direction: column;
   padding: 2rem;
   position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .reports-view {
@@ -914,14 +976,30 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 60%;
+  height: 300px;
   gap: 1rem;
+  color: #666;
 }
 
 .analysis-container {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.no-data-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: #999;
+  height: 300px;
+  border: 1px dashed #ddd;
+  border-radius: 8px;
+  margin-top: 1rem;
+  background: #fafafa;
 }
 
 .welcome-view {
@@ -1034,6 +1112,8 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .analysis-tabs :deep(.p-tablist) {
@@ -1043,7 +1123,6 @@ body {
 .analysis-tabs :deep(.p-tabpanels) {
   flex: 1;
   overflow-y: auto;
-  max-height: 70vh; /* 为选项卡内容添加滚动条 */
   padding: 1rem;
 }
 
