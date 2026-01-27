@@ -154,9 +154,9 @@ pub async fn fetch_all_data(symbol: &str) -> Result<Value, String> {
         .unwrap_or_default();
 
     for (idx, h) in hist_list.iter().enumerate() {
-        // Skip first part, show last 30 days in Excel
+        // Skip first part, show last 180 days in Excel
         let total = hist_list.len();
-        if idx < total.saturating_sub(30) { continue; }
+        if idx < total.saturating_sub(180) { continue; }
 
         if let Some(s) = h.as_str() {
             let parts: Vec<&str> = s.split(',').collect();
@@ -316,14 +316,14 @@ async fn fetch_realtime(client: &reqwest::Client, secid: &str) -> Result<Value, 
 }
 
 async fn fetch_history(client: &reqwest::Client, secid: &str) -> Result<Value, String> {
-    let url = format!("https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=120", secid);
+    let url = format!("https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=200", secid);
     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     let json: Value = res.json().await.map_err(|e| e.to_string())?;
     Ok(json["data"]["klines"].clone())
 }
 
 async fn fetch_fund_flow(client: &reqwest::Client, secid: &str) -> Result<Value, String> {
-    let url = format!("https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?secid={}&klt=101&lmt=120&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65", secid);
+    let url = format!("https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?secid={}&klt=101&lmt=200&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65", secid);
     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     let json: Value = res.json().await.map_err(|e| e.to_string())?;
     Ok(json["data"]["klines"].clone())

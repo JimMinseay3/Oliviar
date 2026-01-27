@@ -173,11 +173,11 @@ def perform_comprehensive_risk_analysis(symbol: str, output_dir: str = "data", p
         report_data["最新财报标题"] = "N/A"
         report_data["最新财报发布日期"] = "N/A"
 
-    # 8. 收集最近一个月的历史数据 (用于 Excel 表格展示)
-    print(f"正在收集 {symbol} 最近一个月的历史数据...")
+    # 8. 收集最近半年的历史数据 (用于 Excel 表格展示)
+    print(f"正在收集 {symbol} 最近半年的历史数据...")
     historical_records = []
-    # 取最近 30 个交易日，按日期降序排列展示
-    hist_month = df_hist.tail(30).sort_values('日期', ascending=False)
+    # 取最近 180 个交易日，按日期降序排列展示
+    hist_month = df_hist.tail(180).sort_values('日期', ascending=False)
     
     # 获取历史资金流向 (用于对齐日期)
     fund_flow_hist = fund_flow.copy() if not fund_flow.empty else pd.DataFrame()

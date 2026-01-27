@@ -177,7 +177,7 @@ def fetch_ths_hist_manual(symbol: str, start_date: str, end_date: str):
     return None
 
 
-def get_stock_hist_data(symbol: str, days: int = 150):
+def get_stock_hist_data(symbol: str, days: int = 180):
     """获取股票历史日频行情数据，支持降级机制"""
     end_date = datetime.now().strftime("%Y%m%d")
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
