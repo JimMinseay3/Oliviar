@@ -589,7 +589,7 @@ if (currentView.value === 'reports') {
 
 <style>
 :root {
-  --sidebar-width: 200px;
+  --sidebar-width: 150px;
   --top-bar-height: 70px;
 }
 
